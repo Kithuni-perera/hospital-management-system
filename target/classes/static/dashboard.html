@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Dashboard — MediCore HMS</title>
+<link rel="stylesheet" href="shared.css"/>
+<style>
+  .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .section-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 20px;
+    color: white;
+    margin-bottom: 20px;
+  }
+  .mini-stat-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .mini-stat {
+    background: var(--glass);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .mini-stat-val { font-size: 22px; font-weight: 700; color: white; }
+  .mini-stat-lbl { font-size: 12px; color: var(--text); margin-top: 2px; }
+  .info-card {
+    background: var(--navy2);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+  }
+  .info-card h4 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 18px;
+    color: white;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .revenue-big {
+    font-family: 'DM Serif Display', serif;
+    font-size: 42px;
+    color: var(--gold);
+    margin: 8px 0;
+  }
+  .progress-bar {
+    height: 8px;
+    background: var(--glass);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 8px 0;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    background: linear-gradient(90deg, var(--teal), var(--green));
+    transition: width 1s ease;
+  }
+  .bed-visual {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(28px, 1fr));
+    gap: 6px;
+    margin-top: 12px;
+  }
+  .bed-dot {
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    border: 1px solid var(--border);
+  }
+  .bed-dot.available { background: rgba(6,214,160,0.15); border-color: var(--green); }
+  .bed-dot.occupied  { background: rgba(239,71,111,0.15); border-color: var(--red); }
+  .bed-dot.other     { background: var(--glass); }
+  .quick-links {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .quick-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: var(--glass);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+  .quick-link:hover { background: rgba(0,180,216,0.1); color: var(--teal); border-color: rgba(0,180,216,0.2); }
+</style>
+</head>
+<body>
+<div id="sidebar-container"></div>
+
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title">
+      <h1>Dashboard</h1>
+      <p id="dateStr">Loading...</p>
+    </div>
+    <div class="topbar-actions">
+      <a href="reports.html" class="btn btn-outline">📈 Full Reports</a>
+    </div>
+  </div>
+
+  <div class="content">
+    <div id="statsGrid" class="stat-grid">
+      <div class="page-loading" style="grid-column:1/-1">
+        <div class="spinner"></div><span>Loading dashboard...</span>
+      </div>
+    </div>
+
+    <div class="dash-grid" id="dashContent" style="display:none">
+      <div class="info-card">
+        <h4>💰 Revenue Overview</h4>
+        <div style="color:var(--text);font-size:13px">Total Revenue</div>
+        <div class="revenue-big" id="totalRevenue">—</div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text);margin-top:8px">
+          <span>Paid Bills: <span id="paidBills" style="color:var(--green)">—</span></span>
+          <span>Pending: <span id="pendingBills" style="color:var(--gold)">—</span></span>
+        </div>
+        <div class="progress-bar" style="margin-top:12px">
+          <div class="progress-fill" id="revenueProgress" style="width:0%"></div>
+        </div>
+      </div>
+
+      <div class="info-card">
+        <h4>🛏️ Bed Availability</h4>
+        <div class="mini-stat-row">
+          <div class="mini-stat">
+            <div class="mini-stat-val" id="availBeds" style="color:var(--green)">—</div>
+            <div class="mini-stat-lbl">Available</div>
+          </div>
+          <div class="mini-stat">
+            <div class="mini-stat-val" id="occBeds" style="color:var(--red)">—</div>
+            <div class="mini-stat-lbl">Occupied</div>
+          </div>
+          <div class="mini-stat">
+            <div class="mini-stat-val" id="maintBeds" style="color:var(--orange)">—</div>
+            <div class="mini-stat-lbl">Maintenance</div>
+          </div>
+          <div class="mini-stat">
+            <div class="mini-stat-val" id="totalBeds">—</div>
+            <div class="mini-stat-lbl">Total</div>
+          </div>
+        </div>
+        <div class="bed-visual" id="bedVisual"></div>
+      </div>
+
+      <div class="info-card">
+        <h4>📅 Appointment Stats</h4>
+        <div class="mini-stat-row">
+          <div class="mini-stat">
+            <div class="mini-stat-val" id="todayApts" style="color:var(--teal)">—</div>
+            <div class="mini-stat-lbl">Today</div>
+          </div>
+          <div class="mini-stat">
+            <div class="mini-stat-val" id="schedApts" style="color:var(--gold)">—</div>
+            <div class="mini-stat-lbl">Scheduled</div>
+          </div>
+          <div class="mini-stat">
+            <div class="mini-stat-val" id="compApts" style="color:var(--green)">—</div>
+            <div class="mini-stat-lbl">Completed</div>
+          </div>
+          <div class="mini-stat">
+            <div class="mini-stat-val" id="cancApts" style="color:var(--red)">—</div>
+            <div class="mini-stat-lbl">Cancelled</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="info-card">
+        <h4>⚡ Quick Actions</h4>
+        <div class="quick-links">
+          <a class="quick-link" href="patients.html">🧑 New Patient</a>
+          <a class="quick-link" href="appointments.html">📅 Book Appointment</a>
+          <a class="quick-link" href="billing.html">💰 Create Invoice</a>
+          <a class="quick-link" href="doctors.html">👨‍⚕️ Add Doctor</a>
+          <a class="quick-link" href="beds.html">🛏️ Manage Beds</a>
+          <a class="quick-link" href="reports.html">📊 View Reports</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+requireAuth();
+buildSidebar('dashboard.html');
+document.getElementById('dateStr').textContent = new Date().toLocaleDateString('en-GB', {weekday:'long',day:'numeric',month:'long',year:'numeric'});
+
+async function loadDashboard() {
+  const res = await apiGet('/reports/dashboard');
+  if (!res || !res.success) return;
+  const d = res.data;
+
+  const grid = document.getElementById('statsGrid');
+  grid.innerHTML = `
+    <div class="stat-card teal">
+      <span class="stat-icon">🧑‍🤝‍🧑</span>
+      <div class="stat-value">${d.totalPatients}</div>
+      <div class="stat-label">Total Patients</div>
+    </div>
+    <div class="stat-card green">
+      <span class="stat-icon">👨‍⚕️</span>
+      <div class="stat-value">${d.totalDoctors}</div>
+      <div class="stat-label">Doctors</div>
+    </div>
+    <div class="stat-card gold">
+      <span class="stat-icon">🏢</span>
+      <div class="stat-value">${d.totalDepartments}</div>
+      <div class="stat-label">Departments</div>
+    </div>
+    <div class="stat-card orange">
+      <span class="stat-icon">📅</span>
+      <div class="stat-value">${d.totalAppointments}</div>
+      <div class="stat-label">Appointments</div>
+    </div>
+    <div class="stat-card red">
+      <span class="stat-icon">🛏️</span>
+      <div class="stat-value">${d.totalBeds}</div>
+      <div class="stat-label">Total Beds</div>
+    </div>
+  `;
+
+  document.getElementById('totalRevenue').textContent = fmtCurrency(d.totalRevenue);
+  document.getElementById('paidBills').textContent = d.paidBills;
+  document.getElementById('pendingBills').textContent = d.pendingBills;
+  const pct = d.paidBills && (d.paidBills + d.pendingBills) > 0
+    ? Math.round(d.paidBills / (d.paidBills + d.pendingBills) * 100) : 0;
+  document.getElementById('revenueProgress').style.width = pct + '%';
+
+  document.getElementById('availBeds').textContent = d.availableBeds;
+  document.getElementById('occBeds').textContent = d.occupiedBeds;
+  document.getElementById('maintBeds').textContent = d.maintenanceBeds;
+  document.getElementById('totalBeds').textContent = d.totalBeds;
+
+  // Bed visual dots
+  const bv = document.getElementById('bedVisual');
+  let dots = '';
+  for (let i = 0; i < Math.min(d.totalBeds, 40); i++) {
+    let cls = i < d.occupiedBeds ? 'occupied' : i < d.occupiedBeds + d.maintenanceBeds ? 'other' : 'available';
+    dots += `<div class="bed-dot ${cls}" title="${cls}">🛏</div>`;
+  }
+  bv.innerHTML = dots;
+
+  document.getElementById('todayApts').textContent = d.todayAppointments;
+  document.getElementById('schedApts').textContent = d.scheduledAppointments;
+  document.getElementById('compApts').textContent = d.completedAppointments;
+  document.getElementById('cancApts').textContent = d.cancelledAppointments;
+
+  document.getElementById('dashContent').style.display = 'grid';
+}
+
+loadDashboard();
+</script>
+</body>
+</html>

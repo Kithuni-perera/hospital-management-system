@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Departments — MediCore HMS</title>
+<link rel="stylesheet" href="shared.css"/>
+</head>
+<body>
+<div id="sidebar-container"></div>
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title">
+      <h1>Departments</h1>
+      <p>Manage hospital departments</p>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-primary" onclick="openModal('deptModal')">+ Add Department</button>
+    </div>
+  </div>
+  <div class="content">
+    <div class="table-card">
+      <div class="table-header">
+        <h3>All Departments</h3>
+        <div class="search-bar"><input type="text" placeholder="Search..." oninput="filterTable(this.value)"/></div>
+      </div>
+      <div class="table-wrap">
+        <table id="deptTable">
+          <thead><tr>
+            <th>#</th><th>Name</th><th>Location</th><th>Phone</th>
+            <th>Doctors</th><th>Rooms</th><th>Status</th><th>Actions</th>
+          </tr></thead>
+          <tbody id="deptBody">
+            <tr><td colspan="8"><div class="page-loading"><div class="spinner"></div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="deptModal">
+  <div class="modal">
+    <h3 id="modalTitle">Add Department</h3>
+    <input type="hidden" id="deptId"/>
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>Department Name *</label>
+        <input type="text" id="deptName" placeholder="e.g. Cardiology"/>
+      </div>
+      <div class="form-group full">
+        <label>Description</label>
+        <textarea id="deptDesc" placeholder="Brief description..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>Location</label>
+        <input type="text" id="deptLoc" placeholder="e.g. Block A, Floor 2"/>
+      </div>
+      <div class="form-group">
+        <label>Phone</label>
+        <input type="text" id="deptPhone" placeholder="e.g. 0112345678"/>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('deptModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveDept()">Save Department</button>
+    </div>
+  </div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+requireAuth(); buildSidebar('departments.html');
+let allDepts = [];
+
+async function load() {
+  const res = await apiGet('/admin/departments');
+  if (!res?.success) return;
+  allDepts = res.data;
+  render(allDepts);
+}
+
+function render(data) {
+  const tbody = document.getElementById('deptBody');
+  if (!data.length) {
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="icon">🏢</div><h4>No Departments</h4><p>Add your first department</p></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = data.map((d, i) => `
+    <tr>
+      <td>${i+1}</td>
+      <td><strong>${d.name}</strong></td>
+      <td>${fmt(d.location)}</td>
+      <td>${fmt(d.phone)}</td>
+      <td><span class="badge badge-teal">${d.totalDoctors || 0}</span></td>
+      <td><span class="badge badge-green">${d.totalRooms || 0}</span></td>
+      <td>${statusBadge(d.isActive ? 'ACTIVE' : 'INACTIVE')}</td>
+      <td>
+        <div class="action-btns">
+          <button class="btn btn-outline btn-sm" onclick="editDept(${d.id})">✏️ Edit</button>
+          <button class="btn btn-outline btn-sm" onclick="toggleStatus(${d.id}, '${d.name}')">${d.isActive ? '🔴 Disable' : '🟢 Enable'}</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteDept(${d.id}, '${d.name}')">🗑️</button>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function filterTable(q) {
+  render(allDepts.filter(d => d.name.toLowerCase().includes(q.toLowerCase())));
+}
+
+function editDept(id) {
+  const d = allDepts.find(x => x.id === id);
+  document.getElementById('deptId').value = d.id;
+  document.getElementById('deptName').value = d.name;
+  document.getElementById('deptDesc').value = d.description || '';
+  document.getElementById('deptLoc').value = d.location || '';
+  document.getElementById('deptPhone').value = d.phone || '';
+  document.getElementById('modalTitle').textContent = 'Edit Department';
+  openModal('deptModal');
+}
+
+function resetForm() {
+  ['deptId','deptName','deptDesc','deptLoc','deptPhone'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('modalTitle').textContent = 'Add Department';
+}
+
+async function saveDept() {
+  const id = document.getElementById('deptId').value;
+  const body = {
+    name: document.getElementById('deptName').value,
+    description: document.getElementById('deptDesc').value,
+    location: document.getElementById('deptLoc').value,
+    phone: document.getElementById('deptPhone').value
+  };
+  if (!body.name) { showToast('Department name is required', 'error'); return; }
+  const res = id ? await apiPut(`/admin/departments/${id}`, body) : await apiPost('/admin/departments', body);
+  if (res?.success) {
+    showToast(id ? 'Department updated!' : 'Department created!');
+    closeModal('deptModal'); resetForm(); load();
+  } else showToast(res?.message || 'Error saving', 'error');
+}
+
+async function toggleStatus(id, name) {
+  const res = await apiPatch(`/admin/departments/${id}/toggle-status`);
+  if (res?.success) { showToast(`${name} status updated!`); load(); }
+  else showToast('Error updating status', 'error');
+}
+
+async function deleteDept(id, name) {
+  confirmDelete(name, async () => {
+    const res = await apiDelete(`/admin/departments/${id}`);
+    if (res?.success) { showToast(`${name} deleted!`); load(); }
+    else showToast(res?.message || 'Error deleting', 'error');
+  });
+}
+
+document.querySelector('.btn-primary[onclick="openModal(\'deptModal\')"]').addEventListener('click', resetForm);
+load();
+</script>
+</body>
+</html>

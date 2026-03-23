@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Beds — MediCore HMS</title>
+<link rel="stylesheet" href="shared.css"/>
+<style>
+  .legend { display:flex; gap:16px; align-items:center; font-size:13px; color:var(--text); }
+  .legend-dot { width:12px;height:12px;border-radius:3px;display:inline-block; }
+</style>
+</head>
+<body>
+<div id="sidebar-container"></div>
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title"><h1>Bed Management</h1><p>Track bed availability and assignments</p></div>
+    <div class="topbar-actions">
+      <button class="btn btn-primary" onclick="showAddModal()">+ Add Bed</button>
+    </div>
+  </div>
+  <div class="content">
+    <div class="table-card">
+      <div class="table-header">
+        <h3>All Beds</h3>
+        <div style="display:flex;gap:10px;align-items:center">
+          <div class="legend">
+            <span><span class="legend-dot" style="background:var(--green)"></span> Available</span>
+            <span><span class="legend-dot" style="background:var(--red)"></span> Occupied</span>
+            <span><span class="legend-dot" style="background:var(--orange)"></span> Maintenance</span>
+          </div>
+          <select onchange="filterByStatus(this.value)" style="width:160px">
+            <option value="">All Status</option>
+            <option>AVAILABLE</option><option>OCCUPIED</option>
+            <option>MAINTENANCE</option><option>RESERVED</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Bed #</th><th>Room</th><th>Status</th><th>Patient</th><th>Notes</th><th>Actions</th>
+          </tr></thead>
+          <tbody id="bedBody">
+            <tr><td colspan="6"><div class="page-loading"><div class="spinner"></div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="bedModal">
+  <div class="modal">
+    <h3 id="modalTitle">Add Bed</h3>
+    <input type="hidden" id="bedId"/>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Bed Number *</label>
+        <input type="text" id="bNum" placeholder="B-001"/>
+      </div>
+      <div class="form-group">
+        <label>Room *</label>
+        <select id="bRoom"><option value="">-- Select Room --</option></select>
+      </div>
+      <div class="form-group">
+        <label>Status *</label>
+        <select id="bStatus">
+          <option>AVAILABLE</option><option>OCCUPIED</option>
+          <option>MAINTENANCE</option><option>RESERVED</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <input type="text" id="bNotes" placeholder="Optional notes"/>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('bedModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveBed()">Save Bed</button>
+    </div>
+  </div>
+</div>
+
+<!-- Assign Patient Modal -->
+<div class="modal-overlay" id="assignModal">
+  <div class="modal" style="width:380px">
+    <h3>Assign Patient to Bed</h3>
+    <input type="hidden" id="assignBedId"/>
+    <div class="form-group" style="margin-bottom:20px">
+      <label>Select Patient *</label>
+      <select id="assignPatient"><option value="">-- Select Patient --</option></select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('assignModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="doAssign()">Assign</button>
+    </div>
+  </div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+requireAuth(); buildSidebar('beds.html');
+let allBeds = [], rooms = [], patients = [];
+
+async function load() {
+  const [bd, rm, pt] = await Promise.all([
+    apiGet('/admin/bed-management/beds'),
+    apiGet('/admin/bed-management/rooms'),
+    apiGet('/patients')
+  ]);
+  allBeds = bd?.data || [];
+  rooms = rm?.data || [];
+  patients = pt?.data || [];
+  document.getElementById('bRoom').innerHTML = '<option value="">-- Select Room --</option>' +
+    rooms.map(r=>`<option value="${r.id}">${r.roomNumber} (${r.roomType})</option>`).join('');
+  document.getElementById('assignPatient').innerHTML = '<option value="">-- Select Patient --</option>' +
+    patients.map(p=>`<option value="${p.id}">${p.firstName} ${p.lastName} (${p.patientCode})</option>`).join('');
+  render(allBeds);
+}
+
+function render(data) {
+  document.getElementById('bedBody').innerHTML = !data.length
+    ? `<tr><td colspan="6"><div class="empty-state"><div class="icon">🛏️</div><h4>No Beds</h4></div></td></tr>`
+    : data.map(b=>`<tr>
+      <td><strong>${b.bedNumber}</strong></td>
+      <td>${fmt(b.roomNumber)}</td>
+      <td>${statusBadge(b.status)}</td>
+      <td>${b.patientName ? `<span class="badge badge-orange">${b.patientName}</span>` : '—'}</td>
+      <td><small>${fmt(b.notes)}</small></td>
+      <td><div class="action-btns">
+        ${b.status==='AVAILABLE'
+          ? `<button class="btn btn-outline btn-sm" onclick="showAssign(${b.id})">🧑 Assign</button>`
+          : b.status==='OCCUPIED'
+          ? `<button class="btn btn-outline btn-sm" onclick="releaseBed(${b.id})">✅ Release</button>`
+          : ''}
+        <button class="btn btn-outline btn-sm" onclick="editBed(${b.id})">✏️</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteBed(${b.id},'${b.bedNumber}')">🗑️</button>
+      </div></td>
+    </tr>`).join('');
+}
+
+function filterByStatus(s) {
+  render(!s ? allBeds : allBeds.filter(b=>b.status===s));
+}
+
+function showAddModal() {
+  document.getElementById('bedId').value='';
+  ['bNum','bNotes'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('bRoom').value='';
+  document.getElementById('bStatus').value='AVAILABLE';
+  document.getElementById('modalTitle').textContent='Add Bed';
+  openModal('bedModal');
+}
+
+function editBed(id) {
+  const b = allBeds.find(x=>x.id===id);
+  document.getElementById('bedId').value=b.id;
+  document.getElementById('bNum').value=b.bedNumber;
+  document.getElementById('bRoom').value=b.roomId;
+  document.getElementById('bStatus').value=b.status;
+  document.getElementById('bNotes').value=b.notes||'';
+  document.getElementById('modalTitle').textContent='Edit Bed';
+  openModal('bedModal');
+}
+
+async function saveBed() {
+  const id = document.getElementById('bedId').value;
+  const body = {
+    bedNumber: document.getElementById('bNum').value,
+    roomId: +document.getElementById('bRoom').value,
+    status: document.getElementById('bStatus').value,
+    notes: document.getElementById('bNotes').value||null
+  };
+  if (!body.bedNumber||!body.roomId) { showToast('Fill required fields','error'); return; }
+  const res = id ? await apiPut(`/admin/bed-management/beds/${id}`,body) : await apiPost('/admin/bed-management/beds',body);
+  if (res?.success) { showToast('Bed saved!'); closeModal('bedModal'); load(); }
+  else showToast(res?.message||'Error','error');
+}
+
+function showAssign(bedId) {
+  document.getElementById('assignBedId').value=bedId;
+  document.getElementById('assignPatient').value='';
+  openModal('assignModal');
+}
+
+async function doAssign() {
+  const bedId = document.getElementById('assignBedId').value;
+  const patientId = document.getElementById('assignPatient').value;
+  if (!patientId) { showToast('Select a patient','error'); return; }
+  const res = await apiPatch(`/admin/bed-management/beds/${bedId}/assign/${patientId}`);
+  if (res?.success) { showToast('Patient assigned!'); closeModal('assignModal'); load(); }
+  else showToast(res?.message||'Error','error');
+}
+
+async function releaseBed(bedId) {
+  if (!confirm('Release this bed?')) return;
+  const res = await apiPatch(`/admin/bed-management/beds/${bedId}/release`);
+  if (res?.success) { showToast('Bed released!'); load(); }
+  else showToast('Error','error');
+}
+
+async function deleteBed(id, num) {
+  confirmDelete(num, async()=>{
+    const res = await apiDelete(`/admin/bed-management/beds/${id}`);
+    if (res?.success) { showToast('Bed deleted!'); load(); }
+    else showToast(res?.message||'Error','error');
+  });
+}
+
+load();
+</script>
+</body>
+</html>

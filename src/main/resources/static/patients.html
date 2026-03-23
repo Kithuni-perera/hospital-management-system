@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Patients — MediCore HMS</title>
+<link rel="stylesheet" href="shared.css"/>
+</head>
+<body>
+<div id="sidebar-container"></div>
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title"><h1>Patients</h1><p>Manage patient records</p></div>
+    <div class="topbar-actions">
+      <button class="btn btn-primary" onclick="showAddModal()">+ Register Patient</button>
+    </div>
+  </div>
+  <div class="content">
+    <div class="table-card">
+      <div class="table-header">
+        <h3>All Patients</h3>
+        <div class="search-bar"><input type="text" placeholder="Search name..." oninput="filterTable(this.value)"/></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Code</th><th>Name</th><th>Phone</th><th>Gender</th>
+            <th>Blood Group</th><th>DOB</th><th>Status</th><th>Actions</th>
+          </tr></thead>
+          <tbody id="patientBody">
+            <tr><td colspan="8"><div class="page-loading"><div class="spinner"></div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="patientModal">
+  <div class="modal">
+    <h3 id="modalTitle">Register Patient</h3>
+    <input type="hidden" id="patientId"/>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>First Name *</label>
+        <input type="text" id="pFirstName" placeholder="Sarah"/>
+      </div>
+      <div class="form-group">
+        <label>Last Name *</label>
+        <input type="text" id="pLastName" placeholder="Fernando"/>
+      </div>
+      <div class="form-group">
+        <label>Phone *</label>
+        <input type="text" id="pPhone" placeholder="0712345678"/>
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="pEmail" placeholder="sarah@gmail.com"/>
+      </div>
+      <div class="form-group">
+        <label>Date of Birth</label>
+        <input type="date" id="pDob"/>
+      </div>
+      <div class="form-group">
+        <label>Gender</label>
+        <select id="pGender">
+          <option value="">-- Select --</option>
+          <option>MALE</option><option>FEMALE</option><option>OTHER</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Blood Group</label>
+        <select id="pBlood">
+          <option value="">-- Select --</option>
+          <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
+          <option>O+</option><option>O-</option><option>AB+</option><option>AB-</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Allergies</label>
+        <input type="text" id="pAllergies" placeholder="e.g. Penicillin"/>
+      </div>
+      <div class="form-group full">
+        <label>Address</label>
+        <textarea id="pAddress" placeholder="123 Main St, Colombo"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Emergency Contact Name</label>
+        <input type="text" id="pEcName" placeholder="John Fernando"/>
+      </div>
+      <div class="form-group">
+        <label>Emergency Contact Phone</label>
+        <input type="text" id="pEcPhone" placeholder="0723456789"/>
+      </div>
+      <div class="form-group full">
+        <label>Medical History</label>
+        <textarea id="pHistory" placeholder="Previous conditions, surgeries..."></textarea>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('patientModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="savePatient()">Save Patient</button>
+    </div>
+  </div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+requireAuth(); buildSidebar('patients.html');
+let allPatients = [];
+
+async function load() {
+  const res = await apiGet('/patients');
+  if (!res?.success) return;
+  allPatients = res.data;
+  render(allPatients);
+}
+
+function render(data) {
+  document.getElementById('patientBody').innerHTML = !data.length
+    ? `<tr><td colspan="8"><div class="empty-state"><div class="icon">🧑‍🤝‍🧑</div><h4>No Patients</h4><p>Register your first patient</p></div></td></tr>`
+    : data.map(p => `<tr>
+      <td><span class="badge badge-teal">${p.patientCode}</span></td>
+      <td><strong>${p.firstName} ${p.lastName}</strong><br><small style="color:var(--text)">${p.email||''}</small></td>
+      <td>${fmt(p.phone)}</td>
+      <td>${fmt(p.gender)}</td>
+      <td><span class="badge badge-gold">${fmt(p.bloodGroup)}</span></td>
+      <td>${fmtDate(p.dateOfBirth)}</td>
+      <td>${statusBadge(p.isActive?'ACTIVE':'INACTIVE')}</td>
+      <td><div class="action-btns">
+        <button class="btn btn-outline btn-sm" onclick="editPatient(${p.id})">✏️ Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deletePatient(${p.id},'${p.firstName}')">🗑️</button>
+      </div></td>
+    </tr>`).join('');
+}
+
+function filterTable(q) {
+  render(allPatients.filter(p=>(p.firstName+' '+p.lastName).toLowerCase().includes(q.toLowerCase())));
+}
+
+const fields = ['patientId','pFirstName','pLastName','pPhone','pEmail','pDob','pGender','pBlood','pAllergies','pAddress','pEcName','pEcPhone','pHistory'];
+
+function showAddModal() {
+  fields.forEach(id => document.getElementById(id).value = '');
+  document.getElementById('modalTitle').textContent = 'Register Patient';
+  openModal('patientModal');
+}
+
+function editPatient(id) {
+  const p = allPatients.find(x=>x.id===id);
+  document.getElementById('patientId').value=p.id;
+  document.getElementById('pFirstName').value=p.firstName||'';
+  document.getElementById('pLastName').value=p.lastName||'';
+  document.getElementById('pPhone').value=p.phone||'';
+  document.getElementById('pEmail').value=p.email||'';
+  document.getElementById('pDob').value=p.dateOfBirth||'';
+  document.getElementById('pGender').value=p.gender||'';
+  document.getElementById('pBlood').value=p.bloodGroup||'';
+  document.getElementById('pAllergies').value=p.allergies||'';
+  document.getElementById('pAddress').value=p.address||'';
+  document.getElementById('pEcName').value=p.emergencyContactName||'';
+  document.getElementById('pEcPhone').value=p.emergencyContactPhone||'';
+  document.getElementById('pHistory').value=p.medicalHistory||'';
+  document.getElementById('modalTitle').textContent='Edit Patient';
+  openModal('patientModal');
+}
+
+async function savePatient() {
+  const id = document.getElementById('patientId').value;
+  const body = {
+    firstName: document.getElementById('pFirstName').value,
+    lastName: document.getElementById('pLastName').value,
+    phone: document.getElementById('pPhone').value,
+    email: document.getElementById('pEmail').value||null,
+    dateOfBirth: document.getElementById('pDob').value||null,
+    gender: document.getElementById('pGender').value||null,
+    bloodGroup: document.getElementById('pBlood').value||null,
+    allergies: document.getElementById('pAllergies').value||null,
+    address: document.getElementById('pAddress').value||null,
+    emergencyContactName: document.getElementById('pEcName').value||null,
+    emergencyContactPhone: document.getElementById('pEcPhone').value||null,
+    medicalHistory: document.getElementById('pHistory').value||null
+  };
+  if (!body.firstName||!body.lastName||!body.phone) { showToast('Name and phone required','error'); return; }
+  const res = id ? await apiPut(`/patients/${id}`,body) : await apiPost('/patients',body);
+  if (res?.success) { showToast('Patient saved!'); closeModal('patientModal'); load(); }
+  else showToast(res?.message||'Error','error');
+}
+
+async function deletePatient(id, name) {
+  confirmDelete(name, async()=>{
+    const res = await apiDelete(`/patients/${id}`);
+    if (res?.success) { showToast('Patient deleted!'); load(); }
+    else showToast(res?.message||'Error','error');
+  });
+}
+
+load();
+</script>
+</body>
+</html>

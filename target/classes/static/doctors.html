@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Doctors — MediCore HMS</title>
+<link rel="stylesheet" href="shared.css"/>
+</head>
+<body>
+<div id="sidebar-container"></div>
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title"><h1>Doctors</h1><p>Manage medical staff</p></div>
+    <div class="topbar-actions">
+      <button class="btn btn-primary" onclick="showAddModal()">+ Add Doctor</button>
+    </div>
+  </div>
+  <div class="content">
+    <div class="table-card">
+      <div class="table-header">
+        <h3>All Doctors</h3>
+        <div class="search-bar"><input type="text" placeholder="Search..." oninput="filterTable(this.value)"/></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>#</th><th>Name</th><th>Specialization</th><th>Department</th>
+            <th>Experience</th><th>Fee</th><th>License</th><th>Status</th><th>Actions</th>
+          </tr></thead>
+          <tbody id="doctorBody">
+            <tr><td colspan="9"><div class="page-loading"><div class="spinner"></div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="doctorModal">
+  <div class="modal">
+    <h3 id="modalTitle">Add Doctor</h3>
+    <input type="hidden" id="doctorId"/>
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>Select User Account *</label>
+        <select id="doctorUserId"><option value="">-- Select User --</option></select>
+      </div>
+      <div class="form-group">
+        <label>Specialization *</label>
+        <input type="text" id="doctorSpec" placeholder="e.g. Cardiologist"/>
+      </div>
+      <div class="form-group">
+        <label>Department *</label>
+        <select id="doctorDept"><option value="">-- Select --</option></select>
+      </div>
+      <div class="form-group">
+        <label>Qualification</label>
+        <input type="text" id="doctorQual" placeholder="e.g. MBBS, MD"/>
+      </div>
+      <div class="form-group">
+        <label>Experience (Years)</label>
+        <input type="number" id="doctorExp" placeholder="5"/>
+      </div>
+      <div class="form-group">
+        <label>License Number</label>
+        <input type="text" id="doctorLic" placeholder="LIC-001"/>
+      </div>
+      <div class="form-group">
+        <label>Gender</label>
+        <select id="doctorGender">
+          <option value="">-- Select --</option>
+          <option>MALE</option><option>FEMALE</option><option>OTHER</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Consultation Fee (Rs.)</label>
+        <input type="number" id="doctorFee" placeholder="2500"/>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('doctorModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveDoctor()">Save Doctor</button>
+    </div>
+  </div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+requireAuth(); buildSidebar('doctors.html');
+let allDoctors = [], depts = [], users = [];
+
+async function load() {
+  const [dr, dp, us] = await Promise.all([
+    apiGet('/admin/doctors'), apiGet('/admin/departments'), apiGet('/admin/users')
+  ]);
+  allDoctors = dr?.data || [];
+  depts = dp?.data || [];
+  users = us?.data || [];
+  populateSelects();
+  render(allDoctors);
+}
+
+function populateSelects() {
+  const ds = document.getElementById('doctorDept');
+  ds.innerHTML = '<option value="">-- Select Department --</option>' +
+    depts.filter(d=>d.isActive).map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
+  const us = document.getElementById('doctorUserId');
+  us.innerHTML = '<option value="">-- Select User --</option>' +
+    users.filter(u=>u.role==='DOCTOR').map(u=>`<option value="${u.id}">${u.firstName} ${u.lastName} (${u.email})</option>`).join('');
+}
+
+function render(data) {
+  document.getElementById('doctorBody').innerHTML = !data.length
+    ? `<tr><td colspan="9"><div class="empty-state"><div class="icon">👨‍⚕️</div><h4>No Doctors</h4><p>Add your first doctor</p></div></td></tr>`
+    : data.map((d,i) => `<tr>
+      <td>${i+1}</td>
+      <td><strong>Dr. ${d.firstName} ${d.lastName}</strong><br><small style="color:var(--text)">${d.email}</small></td>
+      <td>${fmt(d.specialization)}</td>
+      <td><span class="badge badge-teal">${fmt(d.departmentName)}</span></td>
+      <td>${fmt(d.experienceYears)} yrs</td>
+      <td>${fmtCurrency(d.consultationFee)}</td>
+      <td><small>${fmt(d.licenseNumber)}</small></td>
+      <td>${statusBadge(d.isActive?'ACTIVE':'INACTIVE')}</td>
+      <td><div class="action-btns">
+        <button class="btn btn-outline btn-sm" onclick="editDoctor(${d.id})">✏️</button>
+        <button class="btn btn-outline btn-sm" onclick="toggleDoc(${d.id})">${d.isActive?'🔴':'🟢'}</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteDoc(${d.id},'Dr. ${d.firstName}')">🗑️</button>
+      </div></td>
+    </tr>`).join('');
+}
+
+function filterTable(q) {
+  render(allDoctors.filter(d=>(d.firstName+' '+d.lastName+d.specialization).toLowerCase().includes(q.toLowerCase())));
+}
+
+function showAddModal() {
+  document.getElementById('doctorId').value='';
+  document.getElementById('modalTitle').textContent='Add Doctor';
+  ['doctorUserId','doctorSpec','doctorDept','doctorQual','doctorExp','doctorLic','doctorGender','doctorFee']
+    .forEach(id=>document.getElementById(id).value='');
+  openModal('doctorModal');
+}
+
+function editDoctor(id) {
+  const d = allDoctors.find(x=>x.id===id);
+  document.getElementById('doctorId').value=d.id;
+  document.getElementById('doctorUserId').value=d.userId;
+  document.getElementById('doctorSpec').value=d.specialization||'';
+  document.getElementById('doctorDept').value=d.departmentId||'';
+  document.getElementById('doctorQual').value=d.qualification||'';
+  document.getElementById('doctorExp').value=d.experienceYears||'';
+  document.getElementById('doctorLic').value=d.licenseNumber||'';
+  document.getElementById('doctorGender').value=d.gender||'';
+  document.getElementById('doctorFee').value=d.consultationFee||'';
+  document.getElementById('modalTitle').textContent='Edit Doctor';
+  openModal('doctorModal');
+}
+
+async function saveDoctor() {
+  const id = document.getElementById('doctorId').value;
+  const body = {
+    userId: +document.getElementById('doctorUserId').value,
+    specialization: document.getElementById('doctorSpec').value,
+    departmentId: +document.getElementById('doctorDept').value,
+    qualification: document.getElementById('doctorQual').value,
+    experienceYears: +document.getElementById('doctorExp').value||null,
+    licenseNumber: document.getElementById('doctorLic').value,
+    gender: document.getElementById('doctorGender').value||null,
+    consultationFee: +document.getElementById('doctorFee').value||null
+  };
+  if (!body.specialization||!body.departmentId) { showToast('Fill required fields','error'); return; }
+  const res = id ? await apiPut(`/admin/doctors/${id}`,body) : await apiPost('/admin/doctors',body);
+  if (res?.success) { showToast('Doctor saved!'); closeModal('doctorModal'); load(); }
+  else showToast(res?.message||'Error','error');
+}
+
+async function toggleDoc(id) {
+  const res = await apiPatch(`/admin/doctors/${id}/toggle-status`);
+  if (res?.success) { showToast('Status updated!'); load(); }
+}
+
+async function deleteDoc(id, name) {
+  confirmDelete(name, async()=>{
+    const res = await apiDelete(`/admin/doctors/${id}`);
+    if (res?.success) { showToast('Doctor deleted!'); load(); }
+    else showToast(res?.message||'Error','error');
+  });
+}
+
+load();
+</script>
+</body>
+</html>

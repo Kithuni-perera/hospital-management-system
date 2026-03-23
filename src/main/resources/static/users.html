@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Users — MediCore HMS</title>
+<link rel="stylesheet" href="shared.css"/>
+</head>
+<body>
+<div id="sidebar-container"></div>
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title"><h1>User Management</h1><p>Manage system users & roles</p></div>
+    <div class="topbar-actions">
+      <button class="btn btn-primary" onclick="showAddModal()">+ Add User</button>
+    </div>
+  </div>
+  <div class="content">
+    <div class="table-card">
+      <div class="table-header">
+        <h3>All Users</h3>
+        <div style="display:flex;gap:10px">
+          <select onchange="filterByRole(this.value)" style="width:160px">
+            <option value="">All Roles</option>
+            <option>ADMIN</option><option>DOCTOR</option><option>NURSE</option><option>RECEPTIONIST</option>
+          </select>
+          <div class="search-bar"><input type="text" placeholder="Search..." oninput="filterTable(this.value)"/></div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>#</th><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th>
+          </tr></thead>
+          <tbody id="userBody">
+            <tr><td colspan="8"><div class="page-loading"><div class="spinner"></div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="userModal">
+  <div class="modal">
+    <h3 id="modalTitle">Add User</h3>
+    <input type="hidden" id="userId"/>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>First Name *</label>
+        <input type="text" id="uFirst" placeholder="John"/>
+      </div>
+      <div class="form-group">
+        <label>Last Name *</label>
+        <input type="text" id="uLast" placeholder="Smith"/>
+      </div>
+      <div class="form-group">
+        <label>Email *</label>
+        <input type="email" id="uEmail" placeholder="john@hospital.com"/>
+      </div>
+      <div class="form-group">
+        <label>Phone</label>
+        <input type="text" id="uPhone" placeholder="0771234567"/>
+      </div>
+      <div class="form-group">
+        <label>Role *</label>
+        <select id="uRole">
+          <option value="">-- Select Role --</option>
+          <option>ADMIN</option><option>DOCTOR</option><option>NURSE</option><option>RECEPTIONIST</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Password *</label>
+        <input type="password" id="uPass" placeholder="Min 8 characters"/>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('userModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveUser()">Save User</button>
+    </div>
+  </div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+requireAuth(); buildSidebar('users.html');
+let allUsers = [];
+
+async function load() {
+  const res = await apiGet('/admin/users');
+  if (!res?.success) return;
+  allUsers = res.data;
+  render(allUsers);
+}
+
+function render(data) {
+  document.getElementById('userBody').innerHTML = !data.length
+    ? `<tr><td colspan="8"><div class="empty-state"><div class="icon">👤</div><h4>No Users</h4></div></td></tr>`
+    : data.map((u,i)=>`<tr>
+      <td>${i+1}</td>
+      <td><strong>${u.firstName} ${u.lastName}</strong></td>
+      <td>${u.email}</td>
+      <td>${fmt(u.phone)}</td>
+      <td>${statusBadge(u.role)}</td>
+      <td>${statusBadge(u.isActive?'ACTIVE':'INACTIVE')}</td>
+      <td>${fmtDate(u.createdAt)}</td>
+      <td><div class="action-btns">
+        <button class="btn btn-outline btn-sm" onclick="editUser(${u.id})">✏️</button>
+        <button class="btn btn-outline btn-sm" onclick="toggleUser(${u.id})">${u.isActive?'🔴':'🟢'}</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id},'${u.firstName}')">🗑️</button>
+      </div></td>
+    </tr>`).join('');
+}
+
+let roleFilter='', searchFilter='';
+function filterByRole(r) { roleFilter=r; applyFilters(); }
+function filterTable(q) { searchFilter=q; applyFilters(); }
+function applyFilters() {
+  render(allUsers.filter(u=>
+    (!roleFilter||u.role===roleFilter)&&
+    (!searchFilter||(u.firstName+u.lastName+u.email).toLowerCase().includes(searchFilter.toLowerCase()))
+  ));
+}
+
+function showAddModal() {
+  document.getElementById('userId').value='';
+  ['uFirst','uLast','uEmail','uPhone','uRole','uPass'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('modalTitle').textContent='Add User';
+  openModal('userModal');
+}
+
+function editUser(id) {
+  const u = allUsers.find(x=>x.id===id);
+  document.getElementById('userId').value=u.id;
+  document.getElementById('uFirst').value=u.firstName;
+  document.getElementById('uLast').value=u.lastName;
+  document.getElementById('uEmail').value=u.email;
+  document.getElementById('uPhone').value=u.phone||'';
+  document.getElementById('uRole').value=u.role;
+  document.getElementById('uPass').value='';
+  document.getElementById('modalTitle').textContent='Edit User';
+  openModal('userModal');
+}
+
+async function saveUser() {
+  const id = document.getElementById('userId').value;
+  const body = {
+    firstName: document.getElementById('uFirst').value,
+    lastName: document.getElementById('uLast').value,
+    email: document.getElementById('uEmail').value,
+    phone: document.getElementById('uPhone').value||null,
+    role: document.getElementById('uRole').value,
+    password: document.getElementById('uPass').value || (id ? 'KeepExisting@1' : '')
+  };
+  if (!body.firstName||!body.lastName||!body.email||!body.role) { showToast('Fill required fields','error'); return; }
+  const res = id ? await apiPut(`/admin/users/${id}`,body) : await apiPost('/admin/users',body);
+  if (res?.success) { showToast('User saved!'); closeModal('userModal'); load(); }
+  else showToast(res?.message||'Error','error');
+}
+
+async function toggleUser(id) {
+  const res = await apiPatch(`/admin/users/${id}/toggle-status`);
+  if (res?.success) { showToast('Status updated!'); load(); }
+}
+
+async function deleteUser(id, name) {
+  confirmDelete(name, async()=>{
+    const res = await apiDelete(`/admin/users/${id}`);
+    if (res?.success) { showToast('User deleted!'); load(); }
+    else showToast(res?.message||'Error','error');
+  });
+}
+
+load();
+</script>
+</body>
+</html>

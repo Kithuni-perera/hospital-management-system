@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Rooms — MediCore HMS</title>
+<link rel="stylesheet" href="shared.css"/>
+</head>
+<body>
+<div id="sidebar-container"></div>
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title"><h1>Rooms</h1><p>Manage hospital rooms</p></div>
+    <div class="topbar-actions">
+      <button class="btn btn-primary" onclick="showAddModal()">+ Add Room</button>
+    </div>
+  </div>
+  <div class="content">
+    <div class="table-card">
+      <div class="table-header">
+        <h3>All Rooms</h3>
+        <div class="search-bar"><input type="text" placeholder="Search..." oninput="filterTable(this.value)"/></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Room #</th><th>Type</th><th>Department</th><th>Floor</th>
+            <th>Capacity</th><th>Total Beds</th><th>Available</th><th>Price/Day</th><th>Actions</th>
+          </tr></thead>
+          <tbody id="roomBody">
+            <tr><td colspan="9"><div class="page-loading"><div class="spinner"></div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="roomModal">
+  <div class="modal">
+    <h3 id="modalTitle">Add Room</h3>
+    <input type="hidden" id="roomId"/>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Room Number *</label>
+        <input type="text" id="rNum" placeholder="R-101"/>
+      </div>
+      <div class="form-group">
+        <label>Room Type *</label>
+        <select id="rType">
+          <option value="">-- Select --</option>
+          <option>GENERAL</option><option>PRIVATE</option>
+          <option>SEMI_PRIVATE</option><option>ICU</option><option>EMERGENCY</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Department *</label>
+        <select id="rDept"><option value="">-- Select --</option></select>
+      </div>
+      <div class="form-group">
+        <label>Floor</label>
+        <input type="number" id="rFloor" placeholder="1"/>
+      </div>
+      <div class="form-group">
+        <label>Capacity</label>
+        <input type="number" id="rCap" placeholder="4"/>
+      </div>
+      <div class="form-group">
+        <label>Price Per Day (Rs.)</label>
+        <input type="number" id="rPrice" placeholder="5000"/>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('roomModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRoom()">Save Room</button>
+    </div>
+  </div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+requireAuth(); buildSidebar('rooms.html');
+let allRooms = [], depts = [];
+
+async function load() {
+  const [rm, dp] = await Promise.all([apiGet('/admin/bed-management/rooms'), apiGet('/admin/departments')]);
+  allRooms = rm?.data || [];
+  depts = dp?.data || [];
+  document.getElementById('rDept').innerHTML = '<option value="">-- Select --</option>' +
+    depts.filter(d=>d.isActive).map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
+  render(allRooms);
+}
+
+function render(data) {
+  document.getElementById('roomBody').innerHTML = !data.length
+    ? `<tr><td colspan="9"><div class="empty-state"><div class="icon">🏠</div><h4>No Rooms</h4></div></td></tr>`
+    : data.map(r=>`<tr>
+      <td><strong>${r.roomNumber}</strong></td>
+      <td><span class="badge badge-teal">${r.roomType}</span></td>
+      <td>${fmt(r.departmentName)}</td>
+      <td>Floor ${fmt(r.floor)}</td>
+      <td>${fmt(r.capacity)}</td>
+      <td>${r.totalBeds||0}</td>
+      <td><span class="badge badge-green">${r.availableBeds||0}</span></td>
+      <td>${fmtCurrency(r.pricePerDay)}</td>
+      <td><div class="action-btns">
+        <button class="btn btn-outline btn-sm" onclick="editRoom(${r.id})">✏️</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteRoom(${r.id},'${r.roomNumber}')">🗑️</button>
+      </div></td>
+    </tr>`).join('');
+}
+
+function filterTable(q) {
+  render(allRooms.filter(r=>(r.roomNumber+r.roomType+r.departmentName).toLowerCase().includes(q.toLowerCase())));
+}
+
+function showAddModal() {
+  document.getElementById('roomId').value='';
+  ['rNum','rType','rDept','rFloor','rCap','rPrice'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('modalTitle').textContent='Add Room';
+  openModal('roomModal');
+}
+
+function editRoom(id) {
+  const r = allRooms.find(x=>x.id===id);
+  document.getElementById('roomId').value=r.id;
+  document.getElementById('rNum').value=r.roomNumber;
+  document.getElementById('rType').value=r.roomType;
+  document.getElementById('rDept').value=r.departmentId;
+  document.getElementById('rFloor').value=r.floor||'';
+  document.getElementById('rCap').value=r.capacity||'';
+  document.getElementById('rPrice').value=r.pricePerDay||'';
+  document.getElementById('modalTitle').textContent='Edit Room';
+  openModal('roomModal');
+}
+
+async function saveRoom() {
+  const id = document.getElementById('roomId').value;
+  const body = {
+    roomNumber: document.getElementById('rNum').value,
+    roomType: document.getElementById('rType').value,
+    departmentId: +document.getElementById('rDept').value,
+    floor: +document.getElementById('rFloor').value||null,
+    capacity: +document.getElementById('rCap').value||null,
+    pricePerDay: +document.getElementById('rPrice').value||null
+  };
+  if (!body.roomNumber||!body.roomType||!body.departmentId) { showToast('Fill required fields','error'); return; }
+  const res = id ? await apiPut(`/admin/bed-management/rooms/${id}`,body) : await apiPost('/admin/bed-management/rooms',body);
+  if (res?.success) { showToast('Room saved!'); closeModal('roomModal'); load(); }
+  else showToast(res?.message||'Error','error');
+}
+
+async function deleteRoom(id, num) {
+  confirmDelete(num, async()=>{
+    const res = await apiDelete(`/admin/bed-management/rooms/${id}`);
+    if (res?.success) { showToast('Room deleted!'); load(); }
+    else showToast(res?.message||'Error','error');
+  });
+}
+
+load();
+</script>
+</body>
+</html>
