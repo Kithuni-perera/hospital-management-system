@@ -4,22 +4,7 @@ Readme · MD
 > A full-stack, production-grade hospital administration platform that digitises and unifies every core function of a healthcare facility — from patient registration to discharge billing — under a single, secure, intelligent system.
  
 ---
- 
-## 📋 Table of Contents
- 
-- [Overview](#overview)
-- [Problem Statement](#problem-statement)
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [System Architecture](#system-architecture)
-- [Getting Started](#getting-started)
-- [API Documentation](#api-documentation)
-- [Role & Permissions](#roles--permissions)
-- [Testing](#testing)
-- [Performance Highlights](#performance-highlights)
-- [Project Learnings](#project-learnings)
-- [Future Roadmap](#future-roadmap)
----
+
  
 ## Overview
  
